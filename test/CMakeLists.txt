@@ -5,11 +5,12 @@ if (NOT WIN32)
     target_link_libraries(run_test PUBLIC OpenMP::OpenMP_CXX)
 endif()
 target_link_libraries(run_test PUBLIC perf_lib layers_lib)
-target_link_libraries(run_test PUBLIC gtest_main)
+target_link_libraries(run_test PUBLIC gtest)
 target_link_libraries(run_test PUBLIC ReadLib)
 target_link_libraries(run_test PUBLIC reader_lib)
 
 
+target_include_directories(run_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_include_directories(run_test PRIVATE "${CMAKE_SOURCE_DIR}/app/ReaderImage")
 
 if (NOT CMAKE_BUILD_TYPE)
