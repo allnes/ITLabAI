@@ -67,6 +67,11 @@ class Graph {
     in_edges_.clear();
   }
 
+  void setSplitDistribution(
+      const std::vector<std::vector<std::pair<int, int>>>& split_dist) {
+    split_distribution_ = split_dist;
+  }
+
   int getVertexValue(size_t layerID) const {
     if (layerID >= arrayV_.size()) {
       throw std::invalid_argument("ArrayV does not contain this ID.");
@@ -180,33 +185,39 @@ class Graph {
     count_used_split_distribution_ = 0;
 
     for (size_t i = 0; i < traversal.size(); ++i) {
+      int current_layer = traversal[i];
 #ifdef ENABLE_STATISTIC_TIME
       auto start = std::chrono::high_resolution_clock::now();
 #endif
       if (i != 0) {
         inten_.clear();
-        for (size_t k = 0; k < in_edges_[traversal[i]].size(); ++k) {
-          auto target_value = in_edges_[traversal[i]][k];
 
+        for (size_t k = 0; k < in_edges_[current_layer].size(); ++k) {
+          auto target_value = in_edges_[current_layer][k];
           auto it = std::find_if(branch_list_.rbegin(), branch_list_.rend(),
                                  [target_value](const BranchState& s) {
                                    return s.ind_layer == target_value;
                                  });
+
           if (it != branch_list_.rend()) {
             for (size_t f = 0; f < it->distribution.size(); ++f) {
-              if (it->distribution[f].first == traversal[i]) {
+              if (it->distribution[f].first == current_layer) {
                 inten_.push_back(it->give_for_all[it->distribution[f].second]);
               }
             }
           }
-          it->count_used_ten--;
-          if (it->count_used_ten < 1) {
-            auto rit = std::next(it).base();
-            it = std::reverse_iterator<decltype(rit)>(branch_list_.erase(rit));
+
+          if (it != branch_list_.rend()) {
+            it->count_used_ten--;
+            if (it->count_used_ten < 1) {
+              auto rit = std::next(it).base();
+              it =
+                  std::reverse_iterator<decltype(rit)>(branch_list_.erase(rit));
+            }
           }
         }
       }
-      layers_[traversal[i]]->run(inten_, outten_);
+      layers_[current_layer]->run(inten_, outten_);
 
 #ifdef ENABLE_STATISTIC_TENSORS
       tensors_.push_back(inten_[0]);
@@ -217,24 +228,27 @@ class Graph {
 #endif
 
       inten_ = outten_;
-      if (layers_[traversal[i]]->postops.count > 0) {
-        for (unsigned int j = 0; j < layers_[traversal[i]]->postops.count;
+
+      if (layers_[current_layer]->postops.count > 0) {
+        for (unsigned int j = 0; j < layers_[current_layer]->postops.count;
              j++) {
-          layers_[traversal[i]]->postops.layers[j]->run(inten_, outten_);
+          layers_[current_layer]->postops.layers[j]->run(inten_, outten_);
         }
         inten_ = outten_;
       }
 
       BranchState new_branch;
       new_branch.give_for_all = inten_;
-      new_branch.count_used_ten = countinout[traversal[i]].second;
-      new_branch.ind_layer = traversal[i];
-      new_branch.split = layers_[traversal[i]]->getName() == kSplit;
-      if (layers_[traversal[i]]->getName() == kSplit) {
+      new_branch.count_used_ten = countinout[current_layer].second;
+      new_branch.ind_layer = current_layer;
+      new_branch.split = layers_[current_layer]->getName() == kSplit;
+
+      if (layers_[current_layer]->getName() == kSplit) {
         if (static_cast<int>(split_distribution_.size()) == 0) {
-          std::vector<std::pair<int, int>> dis(countinout[traversal[i]].second);
+          std::vector<std::pair<int, int>> dis(
+              countinout[current_layer].second);
           for (size_t m = 0; m < dis.size(); ++m) {
-            dis[m] = {arrayE_[arrayV_[traversal[i]] + m], static_cast<int>(m)};
+            dis[m] = {arrayE_[arrayV_[current_layer] + m], static_cast<int>(m)};
           }
           new_branch.distribution = dis;
         } else {
@@ -243,9 +257,9 @@ class Graph {
           count_used_split_distribution_++;
         }
       } else {
-        std::vector<std::pair<int, int>> dis(countinout[traversal[i]].second);
+        std::vector<std::pair<int, int>> dis(countinout[current_layer].second);
         for (size_t m = 0; m < dis.size(); ++m) {
-          dis[m] = {arrayE_[arrayV_[traversal[i]] + m], 0};
+          dis[m] = {arrayE_[arrayV_[current_layer] + m], 0};
         }
         new_branch.distribution = dis;
       }
@@ -259,6 +273,7 @@ class Graph {
       time_layer_.push_back(layers_[i]->getName());
 #endif
     }
+
     *outtenres_ = outten_[0];
   }
   void setOutput(const Layer& lay, Tensor& vec) {
@@ -274,12 +289,29 @@ class Graph {
 #ifdef ENABLE_STATISTIC_TIME
   std::vector<std::string> getTimeInfo() {
     std::vector<std::string> res;
-    std::vector<std::string> labels = {
-        "Input",       "Pooling", "Normalization", "Dropout", "Element-wise",
-        "Convolution", "Dense",   "Flatten",       "Output"};
+
+    std::unordered_map<LayerType, std::string> label_map = {
+        {kInput, "Input"},
+        {kPooling, "Pooling"},
+        {kElementWise, "Element-wise"},
+        {kConvolution, "Convolution"},
+        {kFullyConnected, "Dense"},
+        {kFlatten, "Flatten"},
+        {kConcat, "Concat"},
+        {kDropout, "Dropout"},
+        {kSplit, "Split"},
+        {kBinaryOp, "BinaryOp"},
+        {kTranspose, "Transpose"},
+        {kMatmul, "MatMul"},
+        {kReshape, "Reshape"},
+        {kSoftmax, "Softmax"},
+        {kReduce, "Reduce"},
+        {kBatchNormalization, "Normalization"}};
+
     for (size_t i = 0; i < time_.size(); i++) {
-      res.push_back(labels[static_cast<size_t>(time_layer_[i])] + ':' +
-                    std::to_string(time_[i]));
+      auto it = label_map.find(time_layer_[i]);
+      std::string layer_name = (it != label_map.end()) ? it->second : "Unknown";
+      res.push_back(layer_name + ':' + std::to_string(time_[i]));
     }
     return res;
   }

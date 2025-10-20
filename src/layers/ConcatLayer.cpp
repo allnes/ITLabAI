@@ -13,14 +13,14 @@ void ConcatLayer::run(const std::vector<Tensor>& input,
     return;
   }
 
-  validate_inputs(input);
+  this->validate_inputs(input);
 
   switch (input[0].get_type()) {
     case Type::kFloat:
-      concatenate<float>(input, output[0]);
+      this->concatenate<float>(input, output[0]);
       break;
     case Type::kInt:
-      concatenate<int>(input, output[0]);
+      this->concatenate<int>(input, output[0]);
       break;
     default:
       throw std::runtime_error("ConcatLayer: Unsupported input tensor type");
@@ -77,6 +77,24 @@ int64_t ConcatLayer::normalize_axis(size_t rank) const {
   return axis;
 }
 
+std::vector<Tensor> ConcatLayer::reorderInputs(
+    const std::vector<Tensor>& inputs) const {
+  if (input_order_.empty() || input_order_.size() != inputs.size()) {
+    return inputs;
+  }
+
+  std::vector<Tensor> reordered(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    if (input_order_[i] >= 0 &&
+        static_cast<size_t>(input_order_[i]) < inputs.size()) {
+      reordered[i] = inputs[input_order_[i]];
+    } else {
+      throw std::runtime_error("ConcatLayer: Invalid input order index");
+    }
+  }
+  return reordered;
+}
+
 Shape ConcatLayer::calculate_output_shape(
     const std::vector<Tensor>& inputs) const {
   if (inputs.empty()) return Shape({});
@@ -95,60 +113,5 @@ Shape ConcatLayer::calculate_output_shape(
 
   return Shape(output_dims);
 }
-
-template <typename T>
-void ConcatLayer::concatenate(const std::vector<Tensor>& inputs,
-                              Tensor& output) const {
-  Shape output_shape = calculate_output_shape(inputs);
-  std::vector<T> output_data(output_shape.count(), 0);
-
-  const int64_t axis = normalize_axis(inputs[0].get_shape().dims());
-  const size_t outer_size = [&]() {
-    size_t size = 1;
-    for (int64_t i = 0; i < axis; ++i) {
-      size *= output_shape[i];
-    }
-    return size;
-  }();
-
-  const size_t inner_size = [&]() {
-    size_t size = 1;
-    for (size_t i = axis + 1; i < output_shape.dims(); ++i) {
-      size *= output_shape[i];
-    }
-    return size;
-  }();
-
-  size_t output_offset = 0;
-
-  for (const auto& input : inputs) {
-    const auto& input_data = *input.as<T>();
-    const Shape& input_shape = input.get_shape();
-    const size_t input_axis_size = input_shape[axis];
-
-    for (size_t outer = 0; outer < outer_size; ++outer) {
-      for (size_t a = 0; a < input_axis_size; ++a) {
-        for (size_t inner = 0; inner < inner_size; ++inner) {
-          size_t input_pos =
-              outer * input_axis_size * inner_size + a * inner_size + inner;
-
-          size_t output_pos = outer * output_shape[axis] * inner_size +
-                              (output_offset + a) * inner_size + inner;
-
-          output_data[output_pos] = input_data[input_pos];
-        }
-      }
-    }
-
-    output_offset += input_axis_size;
-  }
-
-  output = make_tensor(output_data, output_shape);
-}
-
-template void ConcatLayer::concatenate<float>(const std::vector<Tensor>&,
-                                              Tensor&) const;
-template void ConcatLayer::concatenate<int>(const std::vector<Tensor>&,
-                                            Tensor&) const;
 
 }  // namespace it_lab_ai
