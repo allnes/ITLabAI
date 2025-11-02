@@ -1,5 +1,7 @@
 add_subdirectory(googletest)
 
+add_subdirectory(oneDNN)
+
 # Unified TBB Configuration
 option(TBB_TEST "Build TBB tests" OFF)
 option(TBB_EXAMPLES "Build TBB examples" OFF)
