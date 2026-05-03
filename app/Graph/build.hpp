@@ -33,6 +33,7 @@
 #include "layers/Tensor.hpp"
 #include "layers/TransposeLayer.hpp"
 #include "layers_oneDNN/BinaryOpLayer.hpp"
+#include "layers_oneDNN/ConcatLayer.hpp"
 #include "layers_oneDNN/ConvLayer.hpp"
 #include "layers_oneDNN/EWLayer.hpp"
 #include "layers_oneDNN/PoolingLayer.hpp"
@@ -77,7 +78,7 @@ it_lab_ai::Tensor prepare_image(const cv::Mat& image,
                                 const std::string& model_name = "");
 it_lab_ai::Tensor prepare_mnist_image(const cv::Mat& image);
 
-void print_time_stats(it_lab_ai::Graph& graph);
+int print_time_stats(it_lab_ai::Graph& graph);
 namespace it_lab_ai {
 class LayerFactory {
  public:
@@ -133,6 +134,14 @@ class LayerFactory {
     }
     return std::make_shared<PoolingLayer>(shape, strides, pads, dilations,
                                           ceil_mode, PoolType);
+  }
+
+  static std::shared_ptr<Layer> createConcatLayer(
+      int64_t axis, const RuntimeOptions& options) {
+    if (options.backend == Backend::kOneDnn) {
+      return std::make_shared<ConcatLayerOneDnn>(axis);
+    }
+    return std::make_shared<ConcatLayer>(axis);
   }
 };
 

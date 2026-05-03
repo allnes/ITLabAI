@@ -519,7 +519,7 @@ ParseResult parse_json_model(RuntimeOptions options,
             concat_connections[layer_name].push_back(base_input_name);
           }
         }
-        auto concat_layer = std::make_shared<it_lab_ai::ConcatLayer>(axis);
+        auto concat_layer = LayerFactory::createConcatLayer(axis, options);
         layer = concat_layer;
         concat_connected_inputs[layer_name] = std::unordered_set<std::string>();
       } else if (layer_type == "Split") {
@@ -1152,19 +1152,19 @@ it_lab_ai::Tensor prepare_mnist_image(const cv::Mat& image) {
   return it_lab_ai::make_tensor(res, sh);
 }
 
-void print_time_stats(Graph& graph) {
+int print_time_stats(Graph& graph) {
 #ifdef ENABLE_STATISTIC_TIME
   std::vector<std::string> times = graph.getTimeInfo();
-  std::cout << "!INFERENCE TIME INFO START!" << '\n';
-  for (size_t i = 0; i < times.size(); i++) {
+  // std::cout << "!INFERENCE TIME INFO START!" << '\n';
+  /*for (size_t i = 0; i < times.size(); i++) {
     std::cout << times[i] << '\n';
-  }
+  }*/
   std::vector<int> elps_time = graph.getTime();
   int sum = std::accumulate(elps_time.begin(), elps_time.end(), 0);
-  std::cout << "Elapsed inference time:" << sum << '\n';
-  std::cout << "!INFERENCE TIME INFO END!" << '\n';
-  graph.printLayerStats();
+  // graph.printLayerStats();
+  return sum;
 #else
   (void)graph;
+  return 0;
 #endif
 }
